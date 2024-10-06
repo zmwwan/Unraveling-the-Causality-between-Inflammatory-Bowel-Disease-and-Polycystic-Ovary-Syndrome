@@ -1,0 +1,47 @@
+library(bnlearn)
+
+genes <- Reduce(intersect, list(d_n[[1]][["rsID"]], d_n[[2]][["rsID"]], d_n[[3]][["rsID"]]))
+
+path = "pathway/genus"
+fileName = dir(path)
+
+d_n<-list()
+for(k in 1:length(fileName)){
+  data = read.table(file = paste(path,fileName[k],sep = "/"),
+                  header = T,stringsAsFactors = F)
+  d_n[[k]]<-data[,c('rsID','beta','P.weightedSumZ')]
+}
+
+b_data<-merge(finn[,c('rsids','beta','pval')], d_n[[1]], by.x = "rsids", by.y = "rsID")
+colnames(b_data)<-c('rsids','cd_b','cd_p','m1_b','m1_p')
+
+b_data<-finn[,c('rsids','beta','pval')]
+colnames(b_data)<-c('rsids','cd_b','cd_p')
+for (k in 1:length(fileName)) {
+  b_data<-merge(b_data,d_n[[k]], by.x = "rsids", by.y = "rsID")
+  colnames(b_data)[(ncol(b_data)-1)]<-paste0('m',k,'_b',sep='')
+  colnames(b_data)[ncol(b_data)]<-paste0('m',k,'_p',sep='')
+}
+
+beta_matrix <- as.matrix(b_data[, seq(2,ncol(b_data),2)])
+cor_matrix <- cor(beta_matrix)
+print(cor_matrix)
+
+adjacency_matrix <- ifelse(cor_matrix > 0.5, 1, 0)  # cut(0.2)
+network_structure <- empty.graph(colnames(beta_matrix))
+
+threshold <- 0.1
+for (i in 1:(nrow(cor_matrix) - 1)) {
+  for (j in (i + 1):ncol(cor_matrix)) {
+    if (cor_matrix[i, j] > threshold) {
+      from <- rownames(cor_matrix)[i]
+      to <- colnames(cor_matrix)[j]
+      if (from != to) {
+        network_structure <- set.arc(network_structure, from = from, to = to, check.cycles = TRUE)
+      }
+    }
+  }
+}
+
+optimized_structure <- hc(as.data.frame(beta_matrix), score = "bic-g", start = network_structure)
+optimized_tabu <- tabu(as.data.frame(beta_matrix), score = "bic-g", start = network_structure)
